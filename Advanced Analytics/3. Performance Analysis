@@ -1,1 +1,63 @@
+/*
+============================================================================================================================================
+	PERFORMANCE ANALYSIS
+============================================================================================================================================
+*/
 
+/*
+- This is a technique that is used to compare the current value to a target value in order to understand the performance of the subject.
+      
+Clause: Current [Measure] - Target [Measure]
+	i.e. Current sales - Average sales.
+		 Current Year sales - Previous Year sales
+		 Current sales - Lowest sales.
+*/
+
+select *
+from gold.fact_sales;
+
+/* 
+	Analyze the yearly performance of products by comparing each products's sales to both its average sales performance
+    and the previous years' sales.
+*/
+with cte_name as
+(select DP.product_name,
+		year(order_date) Year,
+		sum(sales_amount) Yearly_Sales
+from gold.fact_sales FS
+left join gold.dim_products DP
+	on FS.product_key = DP.product_key
+group by DP.product_name, year(order_date)
+having Year is not null
+order by DP.product_name),
+
+cte_name2 as
+(select product_name,
+		Year,
+        Yearly_Sales,
+		lag(Yearly_Sales, 1, Yearly_Sales) over(partition by product_name) Previous_Years_Sales,
+        Yearly_Sales - lag(Yearly_Sales, 1, Yearly_Sales) over(partition by product_name) YrSales_Prev_Diff,
+        round(avg(Yearly_Sales) over(partition by product_name), 0) Average_Sales,
+        Yearly_Sales - round(avg(Yearly_Sales) over(partition by product_name), 0) Comparison_to_Average
+from cte_name)
+
+select 	product_name,
+		Year,
+        Yearly_Sales,
+		Previous_Years_Sales,
+		YrSales_Prev_Diff,
+        case 	when YrSales_Prev_Diff = 0 then 'Initial Year'
+				when YrSales_Prev_Diff > 0 then 'Positive Revenue'
+                else 'Negative Revenue'
+		end Sales_Performance,
+		Average_Sales,
+		Comparison_to_Average,
+        case 	when Comparison_to_Average = 0 then 'Exactly Average'
+				when Comparison_to_Average > 0 then 'Above Average'
+                else 'Below Average'
+		end Average_Performance
+from cte_name2
+
+/*
+============================================================================================================================================
+*/
