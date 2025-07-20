@@ -1,1 +1,60 @@
+/*
+============================================================================================================================================
+	CHANGE-OVER-TIME ANALYSIS
+============================================================================================================================================
+*/
 
+/*
+	- This is a technique that is used to analyze how a measure evolves over time. It is important in that it helps to track
+	  trends and identify seasonality in one's data.
+      
+	  Clause: Aggregate [Measure] by [Date Dimension]
+			i.e. Total Sales by Year etc.
+*/
+
+select *
+from gold.fact_sales;
+
+-- Analyzing business performance over time in years. 
+-- (High-level overview insights that aid in strategic decision making in the business.)
+select 	year(order_date) Year, 
+		sum(sales_amount) Total_Revenue,
+        count(distinct customer_key) Total_Customers,
+        sum(quantity) as Total_Items_Sold
+from gold.fact_sales
+group by year(order_date)
+order by Year;
+/*
+	- The most fruitful year for the business was 2013. This year had the most sales (16,344,878). It also had the most number
+	  of customers (17,427) who purchased a total of 52,807 items from the business.
+	- The worst year for the business was its beginning year 2010 where only 14 customers came in and purchased a total of 14
+      products generating only 43,419 in revenue for the entire year.
+	- I can also see that over time, the business is growing in terms of the total number of customers who come in to purchase
+      products which also has a positive effect on the revenue generated.
+	- Although the number of customers increased in the year 2012 from the year 2011 (+ 1,039), the business saw a slight decrease in the
+      total revenue generated that year (-1,232,857).
+	- The subsequent year the business saw its most profitable year with approximately 16.3 million in total revenue generated from
+      selling a total of 52,807 products.
+*/
+-- =========================================================================================================================================
+
+-- Analyzing business performance over time in months.
+-- (Detailed insights to uncover seasonality in the business.)
+select 	monthname(order_date) Month, 
+		sum(sales_amount) Total_Revenue,
+        count(distinct customer_key) Total_Customers,
+        sum(quantity) as Total_Items_Sold
+from gold.fact_sales
+group by monthname(order_date)
+order by Total_Revenue desc;
+
+/*
+	- Here, December takes the top spot with a total of 2,656 customers generating a total revenue of 3,211,396 from the
+      purchase of 6,239 total items.
+	- On the other hand, February takes the bottom spot with a total of 1,765 customers coming in to purchase 3,858 products
+      generating a total of 1,744,517 in revenue.
+*/
+-- =========================================================================================================================================
+/*
+============================================================================================================================================
+*/
