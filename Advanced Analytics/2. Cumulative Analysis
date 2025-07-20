@@ -1,1 +1,63 @@
+/*
+============================================================================================================================================
+	CUMULATIVE ANALYSIS
+============================================================================================================================================
+*/
 
+/*
+	- This is a technique that is used to aggregate data progressively over time in order to understand how a business is growing/declining
+      over time.
+      
+	  Clause: Aggregate [Cumulative Measure] by [Date Dimension]
+			i.e. Running Total of Sales by Year.
+                 Moving average of sales by month etc.
+*/
+
+select *
+from gold.fact_sales;
+
+-- Calculate the total sales per month.
+select year(order_date) Year, sum(sales_amount) Total_Revenue
+from gold.fact_sales
+group by year(order_date)
+having Year is not null;
+
+-- Calculate the running total of sales over time.
+select year(order_date) Year, sum(sales_amount) Total_Revenue
+from gold.fact_sales
+group by year(order_date)
+having Year is not null;
+
+select Year, Total_Revenue, sum(Total_Revenue) over(order by Year) Running_Total
+from
+(
+select year(order_date) Year, sum(sales_amount) Total_Revenue
+from gold.fact_sales
+group by year(order_date)
+having Year is not null
+)subquery;
+
+-- Calculate the moving average of sales over time.
+select 	Year, 
+		Total_Revenue, 
+        sum(Total_Revenue) over(order by Year) Running_Total,
+        Average_Sales_Amount,
+        avg(Average_Sales_Amount) over(order by Year) Moving_Average
+from
+(
+select 	year(order_date) Year, 
+		sum(sales_amount) Total_Revenue,
+        round(avg(sales_amount), 0) Average_Sales_Amount
+from gold.fact_sales
+group by year(order_date)
+having Year is not null
+)subquery;
+
+/*
+- 	In conclusion, cumulative analysis is done in order to see the progression/declination of a business in order to understand how a
+	business is growing(either negatively or positively).
+*/
+
+/*
+============================================================================================================================================
+*/
