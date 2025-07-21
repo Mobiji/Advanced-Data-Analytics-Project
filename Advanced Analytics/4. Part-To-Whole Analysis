@@ -1,1 +1,44 @@
+/*
+============================================================================================================================================
+	PART-TO-WHOLE ANALYSIS
+============================================================================================================================================
+*/
 
+/*
+- 	This is a technique that is used to compare an indivdual's contribution to a whole. Here I will analyze how an individual part
+	is performing with respect the the whole. This will enable me to know which category has the greatest/least impact to the business.
+    (Proportion of a part relative to the whole)
+      
+Clause: ([Measure] / Total [Measure]) x 100 by [Dimension]
+		i.e. 	(sales / total sales) x 100 by Category
+				(Quantity / Total Quantity) x 100 by Country
+*/
+
+select *
+from gold.fact_sales;
+
+-- Which categories contribute the most to overall sales?
+with cte_name as
+(select 	DP.category,
+		sum(FS.sales_amount) Revenue_Per_Category
+from gold.fact_sales FS
+left join gold.dim_products DP
+	on FS.product_key = DP.product_key
+group by DP.category)
+
+select 	category,
+		Revenue_Per_Category,
+        sum(Revenue_Per_Category) over() Total_Revenue,
+        round((Revenue_Per_Category / sum(Revenue_Per_Category) over())*100, 2) `% Contribution`
+from cte_name;
+/*
+	- As I can see from the results of the above query, the 'Bikes Category' dominates with a contribution of 96.46%. The other 2 categories
+      'Accessories' & 'Clothing' have negligible contribution as compared to 'Bikes' which is a dangerous thing in a business because this
+      means that if anything bad would happen to the 'Bikes', the whole business would be in significant danger.
+	- In order to address this issue, the business should consider either entirely getting rid of the negligible categories or come up with
+      an aggressive marketing strategy for the products in those 2 categories in order to jumpstart their sales.
+*/
+
+/*
+============================================================================================================================================
+*/
