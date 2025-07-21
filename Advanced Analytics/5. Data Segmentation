@@ -1,1 +1,86 @@
+/*
+============================================================================================================================================
+	DATA SEGMENTATION
+============================================================================================================================================
+*/
 
+/*
+- 	This is a technique that is used to group up data based on a specific range. Firstof all one has to segment his/her data and then group
+	up the data based on those newly created segments.
+    (Pick 2 measures, convert one of them into a group/segment and then aggregate your data based on the newly created segments.)
+      
+Clause: [Measure] by [Measure]
+		i.e. 	Total products by sales range.
+				Total customers by age.
+*/
+
+-- Q1. Segment products into cost ranges and count how many products fall into each segment.
+select	case 	when cost < 100 then 'Less than 100'
+				when cost between 100 and 499 then 'Between 100 & 499'
+                when cost between 500 and 999 then 'Between 500 & 999'
+                else '1000 and above'
+		end Cost_Segments,
+        count(product_name) No_Of_Products
+from gold.dim_products
+group by Cost_Segments
+order by No_Of_Products desc;
+/*	
+	From the result of the query above, products with their cost being less than 100 takes the lead. On the other hand, products whose cost
+	is above 1000 are the fewest in number.
+*/
+-- =========================================================================================================================================
+
+/* 
+	Q. 	Group customers into 3 segments based on their spending behaviour.
+		Segment 1: 'VIP' - A customer MUST AT LEAST have been a member for 12 months and MUST HAVE purchased good worth over 5000.
+        Segment 2: 'Regular' - A customer MUST AT LEAST have been a member for 12 months and MUST HAVE spent 5000 or less.
+        Segment 3: 'New' - Customers who are members for less than 12 months.
+        And finally find the total number of customers in each group.
+*/
+with cte_name as
+(select DC.customer_id,
+		DC.customer_name,
+        FS.order_number,
+        FS.order_date,
+        FS.sales_amount,
+        first_value(FS.order_date) over(partition by DC.customer_id order by FS.order_date) 1st_Purchase_Date,
+        Last_value(FS.order_date) 
+			over(partition by DC.customer_id order by FS.order_date rows between unbounded preceding and unbounded following) Last_Purchase_Date
+from gold.fact_sales FS
+left join gold.dim_customers DC
+	on FS.customer_key = DC.customer_key
+order by 1),
+
+cte_name2 as
+(select 	customer_id,
+		customer_name,
+        order_number,
+        order_date,
+        sales_amount,
+        timestampdiff(month, 1st_Purchase_Date, Last_Purchase_Date) Lifespan,
+        sum(sales_amount) over(partition by customer_id) Total_Spent
+from cte_name),
+
+cte_name3 as
+(select 	*,
+		case 	when Lifespan >= 12 and Total_Spent > 5000 then 'VIP'
+				when Lifespan >= 12 and Total_Spent <= 5000 then 'Regular'
+                when Lifespan < 12 then 'New'
+		end Customer_Segment
+from cte_name2)
+
+select 	Customer_Segment,
+		count(distinct customer_id) No_Of_Customers
+from cte_name3
+group by Customer_Segment
+order by No_Of_Customers desc;
+
+/*
+	- 	From the above query's results, it is evident that a large number of the customers(14,815) fall into the segment 'New'
+		while the segment 'VIP' has the least amount of customers (1,617).
+*/
+
+
+/*
+============================================================================================================================================
+*/
