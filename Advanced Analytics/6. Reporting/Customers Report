@@ -1,1 +1,123 @@
+/*
+============================================================================================================================================
+	CUSTOMERS REPORT
+============================================================================================================================================
+	Purpose: This report consolidates key customer metrics an dbehaviours.
+    
+    Highlights:
+		1. Gathers essential fields such as names, age and transaction details.
+		2. Aggregates customer-level metrics:
+				- Total Orders
+                - Total Sales
+                - Total Quantity Purchased
+                - Total Products
+                - Lifespan (In months)
+		3. Segments customers into categories (VIP, Regular & New) and also into age groups.
+        4. Calculates Valuable KPIs
+				- Recency (Months since last order)
+                - Average Order Value
+                - Average Monthly Spend
+============================================================================================================================================
+*/
 
+-- Step 1: Gathering essential fields into a central base query.
+
+create view gold.Customers_Report as
+with cte_name as
+(select DC.customer_id,
+		DC.customer_name,
+        DC.country,
+        DC.gender,
+        DC.marital_status,
+        DC.birth_date,
+        timestampdiff(year, DC.birth_date, now()) Age,
+        FS.order_number,
+        FS.product_key,
+        FS.order_date,
+		FS.quantity,
+        FS.sales_amount
+from gold.fact_sales FS
+left join gold.dim_customers DC
+	on FS.customer_key = DC.customer_key
+-- There are some orders whose order dates are null so I will filter them out
+where FS.order_date is not null and DC.birth_date is not null),
+-- =========================================================================================================================================
+
+-- Step 2: Aggregating customer-level metrics:
+cte_name2 as
+(select customer_id,
+		customer_name,
+        country,
+        gender,
+        marital_status,
+        birth_date,
+        Age,
+		count(distinct order_number) Total_Orders,
+        -- order_date
+        sum(quantity) Total_Items_Bought,
+        sum(sales_amount) Total_Spent,
+        count(distinct product_key) Total_Distinct_Items_Bought,
+        max(order_date) Last_Order_date,
+        timestampdiff(month, min(order_date), max(order_date)) Lifespan
+from cte_name
+group by 	customer_id,
+			customer_name,
+			country,
+			gender,
+			marital_status,
+			birth_date,
+			Age),
+-- =========================================================================================================================================
+
+-- Step 3: Segmenting customers into different categories.
+cte_name3 as
+(select customer_id,
+		customer_name,
+        country,
+        gender,
+        marital_status,
+        birth_date,
+        Age,
+        case 	when Age <= 35 then 'Youth'
+				when Age between 36 and 55 then 'Middle Aged'
+                else 'Elderly'
+		end Age_group,
+        Total_Orders,
+        Total_Items_Bought,
+        Total_Spent,
+        Total_Distinct_Items_Bought,
+        Last_Order_date,
+        Lifespan,
+        case 	when Total_Spent > 5000 and Lifespan >= 12 then 'VIP'
+				when Total_Spent <= 5000 and Lifespan >= 12 then 'Regular'
+                else 'New'
+		end Customer_Segment
+from cte_name2)
+-- =========================================================================================================================================
+
+-- Step 4: Calculating Valuable KPIs:
+select 	customer_id,
+		customer_name,
+        country,
+        gender,
+        marital_status,
+        birth_date,
+        Age,
+        Age_group,
+        Total_Orders,
+        Total_Items_Bought,
+        Total_Spent,
+        Total_Distinct_Items_Bought,
+        Last_Order_date,
+        Lifespan,
+        Customer_Segment,
+        round(Total_Spent / Total_Orders, 0) Avg_Order_Value,
+        coalesce(round(Total_Spent / Lifespan, 2), Total_Spent) Avg_Monthly_Spend,
+        timestampdiff(month, Last_Order_date, now()) Recency 
+from cte_name3;
+
+-- I finally inserted this whole query into a view in the gold schema
+
+/*
+============================================================================================================================================
+*/
