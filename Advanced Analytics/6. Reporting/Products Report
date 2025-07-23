@@ -1,1 +1,131 @@
+/*
+============================================================================================================================================
+	PRODUCTS REPORT
+============================================================================================================================================
+	Purpose: This report consolidates key product metrics and behaviours.
+    
+    Highlights:
+		1. Gathers essential fields such as product name, categories, subcategories and cost details.
+		2. Aggregates product-level metrics:
+				- Total Orders
+                - Total Sales
+                - Total Quantity Sold
+                - Total Customers (unique)
+                - Lifespan (In months)
+		3. Segments products by revenue to distinguish high performers from mid and low performers.
+        4. Calculates Valuable KPIs
+				- Recency (Months since last sale)
+                - Average Order Revenue
+                - Average Monthly Revenue
+============================================================================================================================================
+*/
 
+-- Step 1: Gathering essential fields into a central base query.
+
+create view gold.products_report as
+with cte_name as
+(select DP.product_id,
+        DP.product_name,
+        DP.category,
+        DP.subcategory,
+        DP.maintenance,
+        DP.cost,
+        DP.production_line,
+        FS.price,
+        FS.product_key,
+        FS.order_number,
+		FS.order_date,
+        DP.prd_start_date,
+        FS.sales_amount,
+        FS.quantity,
+        DC.customer_id
+from gold.fact_sales FS
+left join gold.dim_products DP
+	on FS.product_key = DP.product_key
+left join gold.dim_customers DC
+	on FS.customer_key = DC.customer_key
+where FS.order_date is not null),
+-- =========================================================================================================================================
+
+-- Step 2: Aggregating product-level metrics:
+cte_name2 as
+(select product_id,
+        product_name,
+        category,
+        subcategory,
+        cost,
+        production_line,
+        maintenance,
+        price Selling_Price,
+        prd_start_date Date_Launched,
+        count(order_number) Total_Orders,
+        sum(quantity) Total_Quantity,
+        sum(sales_amount) Total_Sales,
+		-- order_date
+        max(order_date) Last_Purchased,        
+        timestampdiff(month, min(order_date), max(order_date)) Lifespan,
+        count(distinct customer_id) Unique_Customers
+from cte_name
+group by 	product_id,
+			product_name,
+			category,
+			subcategory,			
+			cost,
+			production_line,
+            maintenance,
+			price,
+			product_key,
+            prd_start_date),
+-- =========================================================================================================================================
+
+-- Step 3: Segmenting products into different categories based on their respective revenues.
+cte_name3 as
+(select product_id,
+        product_name,
+        category,
+        subcategory,
+        cost,
+        production_line,
+        maintenance,
+        Selling_Price,
+        Date_Launched,
+        Total_Orders,
+		Total_Quantity,
+        Total_Sales,
+        Last_Purchased,        
+        Lifespan,
+        Unique_Customers,
+        case 	when Total_Sales > 50000 then 'High Performer'
+				when Total_Sales >= 10000 then 'Mid Performer'
+                else 'Low Performer'
+		end Prod_Segment
+from cte_name2)
+-- =========================================================================================================================================
+
+-- Step 4: Calculating Valuable KPIs:
+select 	product_id,
+        product_name,
+        category,
+        subcategory,
+        cost,
+        production_line,
+        maintenance,
+        Selling_Price,
+        Date_Launched,
+        Total_Orders,
+		Total_Quantity,
+        Total_Sales,
+        Last_Purchased,        
+        Lifespan,
+        Unique_Customers,
+        Prod_Segment,
+        timestampdiff(month, Last_Purchased, now()) Recency,
+        round(Total_Sales / Total_Orders, 0) Avg_Order_Revenue,
+        round(Total_Sales / Lifespan, 2) Avg_Monthly_Revenue
+from cte_name3;
+
+-- I finally inserted this whole query into a view in the gold schema
+
+/*
+============================================================================================================================================
+*/
