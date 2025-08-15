@@ -1,12 +1,12 @@
 /*
-============================================================================================================================================
+=======================================================================================================================================================================
 	CHANGE-OVER-TIME ANALYSIS
-============================================================================================================================================
+=======================================================================================================================================================================
 */
 
 /*
 	- This is a technique that is used to analyze how a measure evolves over time. It is important in that it helps to track
-	  trends and identify seasonality in one's data.
+	  trends and identify seasonality in one's data. It also reveals both growth opportunities and problem areas.
       
 	  Clause: Aggregate [Measure] by [Date Dimension]
 			i.e. Total Sales by Year etc.
@@ -15,46 +15,242 @@
 select *
 from gold.fact_sales;
 
--- Analyzing business performance over time in years. 
+-- Analyzing business performance over time (in years). 
 -- (High-level overview insights that aid in strategic decision making in the business.)
-select 	year(order_date) Year, 
-		sum(sales_amount) Total_Revenue,
-        count(distinct customer_key) Total_Customers,
-        sum(quantity) as Total_Items_Sold
-from gold.fact_sales
-group by year(order_date)
-order by Year;
+with cte_name as
+(select year(FS.order_date) Year, 
+        count(distinct FS.customer_key) Total_Distinct_Customers,
+        count(distinct FS.order_number) Total_Orders,
+        sum(FS.quantity) Total_Items_Sold,
+        sum(DP.cost) Total_Cost,
+        sum(FS.sales_amount) Total_Revenue
+from gold.fact_sales FS
+left join gold.dim_products DP
+	on FS.product_key = DP.product_key
+group by year(FS.order_date)
+order by Year)
+
+select 	Year, 
+        Total_Distinct_Customers,
+        Total_Orders,
+        Total_Items_Sold,
+        Total_Cost,
+        Total_Revenue,
+        Total_Revenue - Total_Cost Net_Profit,
+        concat(round(((Total_Revenue - Total_Cost) / Total_Cost) * 100, 2), '%') Percentage_Profit
+from cte_name;
 /*
 	- The most fruitful year for the business was 2013. This year had the most sales (16,344,878). It also had the most number
 	  of customers (17,427) who purchased a total of 52,807 items from the business.
 	- The worst year for the business was its beginning year 2010 where only 14 customers came in and purchased a total of 14
-      products generating only 43,419 in revenue for the entire year.
-	- I can also see that over time, the business is growing in terms of the total number of customers who come in to purchase
-      products which also has a positive effect on the revenue generated.
-	- Although the number of customers increased in the year 2012 from the year 2011 (+ 1,039), the business saw a slight decrease in the
-      total revenue generated that year (-1,232,857).
-	- The subsequent year the business saw its most profitable year with approximately 16.3 million in total revenue generated from
-      selling a total of 52,807 products.
+      products generating only 43,419 in revenue for the entire year. After taking a closer look at the orders from this year,
+      it seems that these are the sales from the last 3 days of that year (29/12/2010 - 31/12/2010). This means that either the
+      business started officially recording sales data on the 29/12/2010 or the business officially started selling it's products
+      on this day. (It would be incorrect to deem 2010 as the worst performing year knowing that it only has sales records for
+      3 days). The same also applies for 2014 because there only exists sales info for the month of January. So it would not make
+      sense to do analysis on years which have partial sales informations. (2010 & 2014). So I will focus my analysis on the years
+      which have full sales informations (full year).
+	- But before I do this, I can also see that there are order records whose 'order_date' is null. This requires some attention.
+	  On further investigation, I can see that most of these nulls can be cleaned up. (Some of the null order dates share an order
+      number with order records which have valid dates. (An order can contain multiple items)).	This means that I can append the
+      correct order dates to the null values by using the shared order numbers.
 */
--- =========================================================================================================================================
+
+-- Appending the correct order dates:
+update gold.fact_sales f1
+join gold.fact_sales f2
+    on f1.order_number = f2.order_number
+    and f1.order_date is null
+    and f2.order_date is not null
+set f1.order_date = f2.order_date;
+/* 
+	This was not an appropriate method to use in order to deal with these nulls. This is because 'gold.fact_sales' is a view
+    and apparently any changes that are done on a view are also done to the real source table.
+*/
+
+-- testing if the updates were successful:
+select *
+from gold.fact_sales FS
+left join gold.dim_products DP
+	on FS.product_key = DP.product_key
+left join gold.dim_customers DC
+	on FS.customer_key = DC.customer_key
+where FS.order_date is null;
+/*
+Result: Now there are only 3 records with null order dates. This could not be cleaned because all records with those order
+		numbers were still null to begin with.
+*/
+-- Now I can carry on with my analysis.
+-- Focussing our analysis on the years with full sales informations:
+with cte_name as
+(select year(FS.order_date) Year, 
+        count(distinct FS.customer_key) Total_Distinct_Customers,
+        count(distinct FS.order_number) Total_Orders,
+        sum(FS.quantity) Total_Items_Sold,
+        sum(DP.cost) Total_Cost,
+        sum(FS.sales_amount) Total_Revenue
+from gold.fact_sales FS
+left join gold.dim_products DP
+	on FS.product_key = DP.product_key
+group by year(FS.order_date)
+order by Year)
+
+select 	Year, 
+        Total_Distinct_Customers,
+        Total_Orders,
+        Total_Items_Sold,
+        Total_Cost,
+        Total_Revenue,
+        Total_Revenue - Total_Cost Net_Profit,
+        concat(round(((Total_Revenue - Total_Cost) / Total_Cost) * 100, 2), '%') Percentage_Profit
+from cte_name
+where Year in (2011, 2012, 2013);
+
+/*
+Growth trajectory:
+	2011 → 2012:
+		Customer base grew by 47% (+ 1,039), but percentage profit dropped from 66.36% → 54.31%. This suggests that while more people bought,
+        the purchases shifted toward lower-margin products.
+	2012 → 2013:
+		Explosion in orders (3,269 → 21,287) and items sold (3,397 → 52,823) with profit margins rebounding to 70.57%.
+        This is likely a year where a major expansion took place. There was possibly new market entries or a big sales push.
+*/
+
+-- Analyzing business performance over time (in years) but breaking it down further by country and also by category.
+-- (In order to understand both the drop in profits for the year 2012 and the explosion in the overall business in 2013.)
+with cte_name as
+(select year(FS.order_date) Year,
+		DC.country,
+        DP.category,
+        count(distinct FS.customer_key) Total_Distinct_Customers,
+        count(distinct FS.order_number) Total_Orders,
+        sum(FS.quantity) Total_Items_Sold,
+        sum(DP.cost) Total_Cost,
+        sum(FS.sales_amount) Total_Revenue
+from gold.fact_sales FS
+left join gold.dim_products DP
+	on FS.product_key = DP.product_key
+left join gold.dim_customers DC
+	on FS.customer_key = DC.customer_key
+group by year	(FS.order_date),
+				DC.country,
+                DP.category
+order by Year)
+
+select 	Year,
+		country,
+        category,
+        Total_Distinct_Customers,
+        Total_Orders,
+        Total_Items_Sold,
+        Total_Cost,
+        Total_Revenue,
+        Total_Revenue - Total_Cost Net_Profit,
+        concat(round(((Total_Revenue - Total_Cost) / Total_Cost) * 100, 2), '%') Percentage_Profit
+from cte_name
+where Year in (2011, 2012, 2013) and country <> 'n/a';
+
+/*
+Observations:
+	- 2011.
+		* All entries are Bikes. The business did not sell any products from the Accessories or Clothing categories.
+		* Profit margins were consistent across countries ~(65–67%), suggesting:
+				Stable pricing and cost structures accross all countries.
+				No diversification in categories yet.
+		* The U.S. and Australia were already large-scale contributors (high revenue & orders).
+	- 2012. (Diversification & Profit Drop)
+		* New categories appear in all countries. (Accessories and Clothing.)
+        * Profit margins for Accessories & Clothing(in United States) are extremely high (>160%) although volumes are tiny (single/double-digit items in many cases).
+        * Bikes margins drop:
+			2011 → ~(65–67)% margins.
+			2012 → ~(52–55)% margins across the board.
+            (After a small investigation, I observed that customers in 2012 came in to purchase cheaper bikes as compared to the customers who came
+            for bikes in 2011. This is the reason for the margin drop in the year 2012 despite the year having more bikes sold than the year 2011.)
+		* Revenue impact: While categories expanded, the overall profit from Bikes fell (core revenue driver), pulling total profits down.
+	- 2013. (Explosion Across All Metrics)
+		* Massive jump in scale:
+			Orders in thousands as opposed to hundreds in the previous years.
+			Distinct customers multiplied several times.
+			Accessories & Clothing went from niche to significant contributors.
+		* Margins:
+			Bikes recover to ~65–70% range.
+			Accessories maintain very high margins (~168%).
+			Clothing margins mostly 50–80%.
+		* United States, Australia, and Canada lead in total revenue gains, but every country grows significantly.
+		* Likely drivers: Aggressive market expansion, Scaling up marketing & distribution.
+        
+In general:
+	* Accessories seem to be a “cash cow”. (High-margin, low cost). A strategy could be to push accessory sales alongside big-ticket Bikes.
+    * The 2013 surge suggests an inflection point in the business. (Possibly after operational fixes, marketing expansion, or supplier renegotiations).
+*/
+
+-- ====================================================================================================================================================================
 
 -- Analyzing business performance over time in months.
 -- (Detailed insights to uncover seasonality in the business.)
-select 	monthname(order_date) Month, 
-		sum(sales_amount) Total_Revenue,
-        count(distinct customer_key) Total_Customers,
-        sum(quantity) as Total_Items_Sold
-from gold.fact_sales
-group by monthname(order_date)
-order by Total_Revenue desc;
+with cte_name as
+(select year(FS.order_date) Year,
+		month(FS.order_date) Month,
+        count(distinct FS.customer_key) Total_Distinct_Customers,
+        count(distinct FS.order_number) Total_Orders,
+        sum(FS.quantity) Total_Items_Sold,
+        sum(DP.cost) Total_Cost,
+        sum(FS.sales_amount) Total_Revenue
+from gold.fact_sales FS
+left join gold.dim_products DP
+	on FS.product_key = DP.product_key
+group by	year(FS.order_date),
+			month(FS.order_date)
+order by 	Year,
+			Month)
+
+select 	Year,
+        Case 	when Month = 1 then 'January'
+				when Month = 2 then 'February'
+                when Month = 3 then 'March'
+                when Month = 4 then 'April'
+                when Month = 5 then 'May'
+                when Month = 6 then 'June'
+                when Month = 7 then 'July'
+                when Month = 8 then 'August'
+                when Month = 9 then 'September'
+                when Month = 10 then 'October'
+                when Month = 11 then 'November'
+                when Month = 12 then 'December'
+		end Month_Name,
+        Total_Distinct_Customers,
+        Total_Orders,
+        Total_Items_Sold,
+        round(Total_Items_Sold / Total_Orders, 2) Items_per_Order,
+        Total_Cost,
+        Total_Revenue,
+        Total_Revenue - Total_Cost Net_Profit,
+        concat(round(((Total_Revenue - Total_Cost) / Total_Cost) * 100, 2), '%') Percentage_Profit
+from cte_name
+where Year in ('2011', '2012', '2013');
+
 
 /*
-	- Here, December takes the top spot with a total of 2,656 customers generating a total revenue of 3,211,396 from the
-      purchase of 6,239 total items.
-	- On the other hand, February takes the bottom spot with a total of 1,765 customers coming in to purchase 3,858 products
-      generating a total of 1,744,517 in revenue.
+Observations & Insights:
+	* 2011 & 2012 - Sales activity was very steady month-to-month, with exactly 1 item per order until December 2012, which jumps to 1.36.
+	* 2013 - Big structural shift. Orders start containing more items (2.4 – 2.65 per order), indicating either bundling, multi-item promotions,
+			 or larger customer baskets.
+	* December tends to have higher sales volume, but the big volume jump in 2013 isn’t limited to holiday months (it was sustained all year).
+    * 2013 Explosion can be attributed to:
+			Market expansion (more customers per month).
+			Larger basket sizes per order.
+			Better margins (profit % back to ~70%).
+	* This might suggest that the business possibly had:
+			Strong promotional strategy encouraging multi-item orders.
+			Significant entries into new geographies or channels.
+Key takeaways:
+	* 2013 is the turning point with the highest basket sizes, more customers, and margin recovery across all months.
+	* 2012 margins dipped across most months except December due to the moving of low-margin products(majorly dominating sales).
+	* Seasonality Pre-2013: Only December stood out as stronger. The rest of the months were flat(margin-wise).
+	* Seasonality Post-2013: Every month lifted substantially, but December is still the best-performing month in all fields except the margin field.
 */
--- =========================================================================================================================================
+-- ====================================================================================================================================================================
+
 /*
-============================================================================================================================================
+=======================================================================================================================================================================
 */
