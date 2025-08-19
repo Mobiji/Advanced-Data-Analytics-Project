@@ -13,29 +13,97 @@
                  Moving average of sales by month etc.
 */
 
-select *
-from gold.fact_sales;
+-- Calculating the running total of sales over time in months.
+with cte_name as
+(select year(FS.order_date) Year,
+		month(FS.order_date) Month,
+        count(distinct FS.order_number) Total_Dist_Orders,
+        count(distinct DC.customer_id) Total_Dist_Cust,
+        sum(FS.quantity) Total_Quantity,
+        sum(DP.cost) Total_Cost,
+		sum(FS.sales_amount) Total_Revenue	
+from gold.fact_sales FS
+left join gold.dim_customers DC
+	on FS.customer_key = DC.customer_key
+left join gold.dim_products DP
+	on FS.product_key = DP.product_key
+group by 	year(FS.order_date),
+			month(FS.order_date)
+having Year in (not null, 2011, 2012, 2013, 2014)),
 
--- Calculate the total sales per month.
-select year(order_date) Year, sum(sales_amount) Total_Revenue
-from gold.fact_sales
-group by year(order_date)
-having Year is not null;
+cte_name1 as
+(select	Year,
+		case 	when month = 1 then 'January'
+				when month = 2 then 'February'
+				when month = 3 then 'March'
+				when month = 4 then 'April'
+				when month = 5 then 'May'
+				when month = 6 then 'June'
+				when month = 7 then 'July'
+				when month = 8 then 'August'
+				when month = 9 then 'September'
+				when month = 10 then 'October'
+				when month = 11 then 'November'
+				when month = 12 then 'December'
+		end Month_Name,
+        Total_Dist_Orders,
+        sum(Total_Dist_Orders) over(order by Year, Month) RunTot_Orders,
+        lag(Total_Dist_Orders) over(order by Year, Month rows between 1 preceding and current row) Prev_Val,
+        Total_Dist_Cust,
+        sum(Total_Dist_Cust) over(order by Year, Month) RunTot_Cust,
+        lag(Total_Dist_Cust) over(order by Year, Month rows between 1 preceding and current row) Prev_Val1,
+        Total_Quantity,
+        sum(Total_Quantity) over(order by Year, Month) RunTot_Quantity,
+        Total_Cost,
+        sum(Total_Cost) over(order by Year, Month) RunTot_Cost,
+        Total_Revenue,
+		sum(Total_Revenue) over(order by Year, Month) RunTot_Sales,
+        lag(Total_Revenue) over(order by Year, Month rows between 1 preceding and current row) Prev_Val2
+from cte_name)
 
--- Calculate the running total of sales over time.
-select year(order_date) Year, sum(sales_amount) Total_Revenue
-from gold.fact_sales
-group by year(order_date)
-having Year is not null;
+select 	Year,
+		Month_Name,
+        Total_Dist_Orders,
+        RunTot_Orders,
+        round((Total_Dist_Orders / Prev_Val) * 100, 2) - 100 `%OrderChange`,
+        Total_Dist_Cust,
+        RunTot_Cust,
+        round((Total_Dist_Cust / Prev_Val1) * 100, 2) - 100 `%CustChange`,
+        Total_Quantity,
+        RunTot_Quantity,
+        Total_Cost,
+        RunTot_Cost,
+        Total_Revenue,
+		RunTot_Sales,
+        round((Total_Revenue / Prev_Val2) * 100, 2) - 100 `%SalesChange`
+from cte_name1;
 
-select Year, Total_Revenue, sum(Total_Revenue) over(order by Year) Running_Total
-from
-(
-select year(order_date) Year, sum(sales_amount) Total_Revenue
-from gold.fact_sales
-group by year(order_date)
-having Year is not null
-)subquery;
+/*
+Key Takeaways:
+	Strategic Takeaways
+		* 2011–2013: The company was in a strong growth and expansion phase, with consistent scaling in customers and revenue.
+		* 2012 volatility suggests seasonality or external market effects — deeper drill needed (product mix or region-level).
+		* 2014 drop-off signals stagnation — leadership should investigate retention, market limits, or increased competition.
+        * June stands out every year.
+			2011: +31% sales jump.
+			2012: +54% sales jump.
+			2013: +27% sales jump.
+			This is consistent across all years, meaning June is a peak month. It could be linked to mid-year campaigns, seasonality, or customer cycles.
+		* Post-June slowdowns. After June, sales often dip in July (2011: -19%, 2012: -20%, 2013: -17%). 
+			(Suggests burnout after peak campaigns. Customers frontload purchases in June, leading to July contraction.)
+		* 2014 is anomalous. The data ends early (January only), and revenue is almost wiped out which indicates either business shut down,
+			dataset cutoff, or operations paused.
+        
+	This gives a clear timeline story:
+		2011: Launch/growth.
+		2012: Shaky expansion but still scaling.
+		2013: Breakout year which is worth a deeper drill-down.
+
+Insights: 
+	* June Strategy: Clearly the best-performing month. Company should double down on mid-year campaigns (e.g., marketing, product launches, customer incentives).
+	* July Strategy: Expect post-peak dips hence the business can introduce retention offers or bundling promos to soften the slowdown.
+*/
+-- =====================================================================================================================================================================
 
 -- Calculate the moving average of sales over time.
 select 	Year, 
@@ -54,8 +122,7 @@ having Year is not null
 )subquery;
 
 /*
-- 	In conclusion, cumulative analysis is done in order to see the progression/declination of a business in order to understand how a
-	business is growing(either negatively or positively).
+In conclusion, cumulative analysis is done in order to see the progression/declination in terms of growth of a business.
 */
 
 /*
