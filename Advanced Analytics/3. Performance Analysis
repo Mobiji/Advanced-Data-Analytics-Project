@@ -13,12 +13,9 @@ Clause: Current [Measure] - Target [Measure]
 		 Current sales - Lowest sales.
 */
 
-select *
-from gold.fact_sales;
-
 /* 
 	Analyze the yearly performance of products by comparing each products's sales to both its average sales performance
-    and the previous years' sales.
+    and the previous years' sales. (For years with the full sales informations i.e. 2011, 2012 & 2013).
 */
 with cte_name as
 (select DP.product_name,
@@ -28,7 +25,7 @@ from gold.fact_sales FS
 left join gold.dim_products DP
 	on FS.product_key = DP.product_key
 group by DP.product_name, year(order_date)
-having Year is not null
+having Year in (2011, 2012, 2013) 
 order by DP.product_name),
 
 cte_name2 as
@@ -56,7 +53,7 @@ select 	product_name,
 				when Comparison_to_Average > 0 then 'Above Average'
                 else 'Below Average'
 		end Average_Performance
-from cte_name2
+from cte_name2;
 
 /*
 ============================================================================================================================================
